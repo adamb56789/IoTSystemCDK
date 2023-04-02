@@ -6,7 +6,7 @@ import { Construct } from 'constructs';
 import { join } from 'path'
 import { SnsAction } from 'aws-cdk-lib/aws-cloudwatch-actions';
 import { Topic } from 'aws-cdk-lib/aws-sns';
-import { Table, AttributeType } from 'aws-cdk-lib/aws-dynamodb';
+import { Table, AttributeType, BillingMode } from 'aws-cdk-lib/aws-dynamodb';
 import { PolicyStatement } from 'aws-cdk-lib/aws-iam';
 import { Runtime, FunctionUrlAuthType } from 'aws-cdk-lib/aws-lambda';
 import { AwsCustomResource, PhysicalResourceId, AwsCustomResourcePolicy } from 'aws-cdk-lib/custom-resources';
@@ -74,18 +74,9 @@ export class IotSystemCdkStack extends Stack {
       partitionKey: {
         name: 'device_id',
         type: AttributeType.STRING
-      }
+      },
+      billingMode: BillingMode.PAY_PER_REQUEST
     });
-
-    // Allow it to scale all the way down to 1 because expecting low usage
-    locationTable.autoScaleWriteCapacity({
-      minCapacity: 1,
-      maxCapacity: 5,
-    }).scaleOnUtilization({ targetUtilizationPercent: 75 });
-    locationTable.autoScaleReadCapacity({
-      minCapacity: 1,
-      maxCapacity: 5,
-    }).scaleOnUtilization({ targetUtilizationPercent: 75 });
 
     // Node lambda returning webpage with data from a list of devices
     const getLatestMeasurementsLambda = new NodejsFunction(this, 'getLatestMeasurements', {
