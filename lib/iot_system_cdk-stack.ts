@@ -16,6 +16,8 @@ import { StringParameter } from 'aws-cdk-lib/aws-ssm';
 export class IotSystemCdkStack extends Stack {
 
   /**
+   * Scan the logs with a metric filter, set an alarm to send to SNS if anything
+   * is found
    * 
    * @param logGroup logs from a lambda function
    * @param metricName name of the metric, also used to construct Alarm name
@@ -44,7 +46,7 @@ export class IotSystemCdkStack extends Stack {
       actionsEnabled: true,
       alarmName: "IoTSystem " + metricName,
       comparisonOperator: ComparisonOperator.GREATER_THAN_THRESHOLD,
-      treatMissingData: TreatMissingData.IGNORE,
+      treatMissingData: TreatMissingData.NOT_BREACHING,
       threshold: 0
     })
     return alarm
