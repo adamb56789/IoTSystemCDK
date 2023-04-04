@@ -87,8 +87,13 @@ export class IotSystemCdkStack extends Stack {
     })
 
     role.addToPolicy(new PolicyStatement({
-      actions: ['timestream:WriteRecords', 'timestream:DescribeEndpoints'],
+      actions: ['timestream:WriteRecords'],
       resources: [measurementsTable.attrArn]
+    }))
+    
+    role.addToPolicy(new PolicyStatement({
+      actions: ['timestream:DescribeEndpoints'],
+      resources: ['*']
     }))
 
     return new CfnTopicRule(this, 'PicothermTimestreamRule', {

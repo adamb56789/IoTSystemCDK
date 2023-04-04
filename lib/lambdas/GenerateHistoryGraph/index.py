@@ -1,7 +1,5 @@
 import boto3
-import json
 import io
-import zlib
 import hashlib
 import numpy as np
 import pandas as pd
@@ -9,14 +7,29 @@ import matplotlib.pyplot as plt
 from matplotlib.dates import DateFormatter, HourLocator
 import os
 
-OUTPUT_FORMATS = ["raw_text_svg", "compressed_svg"]
-
 DATA_RESOLUTION = 300
 MOVAVG_RADIUS = 3
 
 CORRECT_PASSWORD_HASH = os.environ['CORRECT_PASSWORD_HASH']
 TIMESTREAM_DB_NAME = os.environ['TIMESTREAM_DB_NAME']
 TIMESTREAM_TABLE_NAME = os.environ['TIMESTREAM_TABLE_NAME']
+
+
+def get_output_page(svg):
+    return f"""
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Home Measurement History</title>
+  <!-- icon data to avoid browser making another request -->
+  <link rel="icon" href="data:,">
+</head>
+
+<body>
+{svg}
+</body>
+</html>
+"""
 
 
 def get_query(device_name, graph_duration):
@@ -66,7 +79,7 @@ def add_plot(response, device_name, time_mode, show_absolute_humidity):
         temperature, MOVAVG_RADIUS*2+1), "-", color=color_t, label="Temperature")
     ax_rh.plot_date(time, humidity, '-', color=color_rh, label="Humidity")
 
-    if show_absolute_humidity == "True":
+    if show_absolute_humidity:
         absolute_humidity = (6.112*np.exp((17.67*temperature) /
                              (temperature+243.5))*humidity*2.1674)/(273.15+temperature)
         ax_ah = ax_t.twinx()
@@ -90,11 +103,6 @@ def add_plot(response, device_name, time_mode, show_absolute_humidity):
     plt.tight_layout()
 
 
-def check_param(param, valid):
-    if param not in valid:
-        raise ValueError(f"Format incorrect: {param} not in {valid}")
-
-
 client = boto3.client('timestream-query')
 
 
@@ -104,21 +112,23 @@ def handler(event, context):
         event = event['queryStringParameters']
 
     password = event['password']
-    output_format = event['output_format']
     device_name = event['device_name']
     graph_duration = event['graph_duration']
-    show_absolute_humidity = event['show_absolute_humidity']
+    show_absolute_humidity = True if 'show_absolute_humidity' in event else False
 
     hash = hashlib.sha256(password.encode('utf-8')).hexdigest()
 
     if hash != CORRECT_PASSWORD_HASH:
         raise Exception("Incorrect password")
 
-    print("Received event: " + json.dumps(event, indent=2))
+    print("Received event:", device_name,
+          graph_duration, show_absolute_humidity)
 
-    check_param(output_format, OUTPUT_FORMATS)
+    query = get_query(device_name, graph_duration)
 
-    response = client.query(QueryString=get_query(device_name, graph_duration))
+    print("Running query:", query.replace('\n', ' ').replace('\r', ''))
+
+    response = client.query(QueryString=query)
 
     add_plot(response, device_name, graph_duration[-1], show_absolute_humidity)
 
@@ -128,7 +138,13 @@ def handler(event, context):
 
     raw_svg = f.getvalue()
 
-    if output_format == "raw_text_svg":
-        return raw_svg.decode("utf-8")
-    else:
-        return zlib.compress(raw_svg)
+    svg = raw_svg.decode("utf-8")
+    svg = svg[svg.find('<svg'):]  # Remove stuff from front before the svg
+    html = get_output_page(svg)
+    return {
+        "statusCode": 200,
+        "body": html,
+        "headers": {
+            'Content-Type': 'text/html;charset=utf-8',
+        }
+    }
