@@ -8,7 +8,6 @@ import { Function, FunctionUrlAuthType, Runtime } from 'aws-cdk-lib/aws-lambda';
 import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
 import { Topic } from 'aws-cdk-lib/aws-sns';
 import { StringParameter } from 'aws-cdk-lib/aws-ssm';
-import { AwsCustomResource, AwsCustomResourcePolicy, PhysicalResourceId } from 'aws-cdk-lib/custom-resources';
 import { Construct } from 'constructs';
 import { join } from 'path';
 
@@ -38,7 +37,7 @@ export class IotSystemCdkStack extends Stack {
       billingMode: BillingMode.PAY_PER_REQUEST
     });
 
-    const getLatestMeasurementsLambda = this.createLatestMeasurementsLambda(this.getIotEndpoint(), locationTable);
+    const getLatestMeasurementsLambda = this.createLatestMeasurementsLambda(measurementsTable, locationTable);
 
     const lambdas = [
       getLatestMeasurementsLambda
@@ -94,33 +93,21 @@ export class IotSystemCdkStack extends Stack {
 
   /**
    * Node.js function returning a webpage with data from a list of devices
-   * @param iotEndpoint the URL of the IoT core endpoint
-   * @param locationTable a DynamoDB table mapping device ID to location
-   * @returns a lambda function
    */
-  private createLatestMeasurementsLambda(iotEndpoint: string, locationTable: Table): Function {
+  private createLatestMeasurementsLambda(measurementsTable: TableV2, locationTable: Table): Function {
     const lambdaFunction = new NodejsFunction(this, 'getLatestMeasurements', {
       entry: join(__dirname, 'lambdas', 'GetLatestMeasurements', 'index.js'),
-      bundling: {
-        externalModules: [
-          'aws-sdk',
-        ],
-      },
       environment: {
-        IOT_ENDPOINT: iotEndpoint,
-        TABLE_NAME: locationTable.tableName,
+        LOCATION_TABLE_NAME: locationTable.tableName,
+        MEASUREMENTS_TABLE_NAME: measurementsTable.tableName,
         PASSWORD_HASH: StringParameter.valueFromLookup(this, CORRECT_PASSWORD_HASH_PARAMETER)
       },
       runtime: Runtime.NODEJS_20_X,
       memorySize: 1000
     });
 
-    // Lambda needs perms for location table and IoT
+    measurementsTable.grantReadData(lambdaFunction)
     locationTable.grantReadData(lambdaFunction)
-    lambdaFunction.addToRolePolicy(new PolicyStatement({
-      actions: ['iot:GetRetainedMessage'],
-      resources: ['*']
-    }));
 
     // Generate and output the function URL
     const getLatestMeasurementsUrl = lambdaFunction.addFunctionUrl({
@@ -131,25 +118,5 @@ export class IotSystemCdkStack extends Stack {
     });
 
     return lambdaFunction
-  }
-
-  /**
-   * Gets the endpoint of the IoT Core broker for accessing the measurements
-   * @returns the endpoint URL
-   */
-  private getIotEndpoint(): string {
-    const getIoTEndpoint = new AwsCustomResource(this, 'IoTEndpoint', {
-      onCreate: {
-        service: 'Iot',
-        action: 'describeEndpoint',
-        physicalResourceId: PhysicalResourceId.fromResponse('endpointAddress'),
-        parameters: {
-          "endpointType": "iot:Data-ATS"
-        }
-      },
-      policy: AwsCustomResourcePolicy.fromSdkCalls({ resources: AwsCustomResourcePolicy.ANY_RESOURCE })
-    });
-    const IOT_ENDPOINT = getIoTEndpoint.getResponseField('endpointAddress')
-    return IOT_ENDPOINT
   }
 }
