@@ -6,7 +6,7 @@ import { Construct } from 'constructs';
 import { join } from 'path'
 import { SnsAction } from 'aws-cdk-lib/aws-cloudwatch-actions';
 import { Topic } from 'aws-cdk-lib/aws-sns';
-import { Table, AttributeType, BillingMode } from 'aws-cdk-lib/aws-dynamodb';
+import { Table, AttributeType, BillingMode, TableV2 } from 'aws-cdk-lib/aws-dynamodb';
 import { PolicyStatement, Role, ServicePrincipal } from 'aws-cdk-lib/aws-iam';
 import { Runtime, FunctionUrlAuthType, LayerVersion, Function } from 'aws-cdk-lib/aws-lambda';
 import { AwsCustomResource, PhysicalResourceId, AwsCustomResourcePolicy } from 'aws-cdk-lib/custom-resources';
@@ -25,9 +25,18 @@ export class IotSystemCdkStack extends Stack {
   constructor(scope: Construct, id: string, props?: StackProps) {
     super(scope, id, props);
 
-    const snsTopic = new Topic(this, 'IoTSystemErrors')
-    this.createLatestMeasurementsResources(snsTopic)
-    this.createHistoryGraphResources(snsTopic)
+    const measurementsTable =  new TableV2(this, 'MeasurementsTable', {
+      tableName: 'MeasurementsTable',
+      partitionKey: {name: 'device_id', type: AttributeType.STRING},
+      sortKey: {name: 'time', type: AttributeType.NUMBER},
+      deletionProtection: true
+    });
+
+    this.createIotDDBRule(measurementsTable);
+
+    const adminNotificationTopic = new Topic(this, 'IoTSystemErrors')
+    this.createLatestMeasurementsResources(adminNotificationTopic)
+    this.createHistoryGraphResources(adminNotificationTopic)
   }
 
   /**
@@ -65,8 +74,6 @@ export class IotSystemCdkStack extends Stack {
     const measurementsTable = this.createTimestreamTable()
     const graphLambda = this.createHistoryGraphLambda(measurementsTable)
 
-    this.createIotTimestreamRule(measurementsTable)
-
     // Alarm on errors and send emails
     const passwordAlarm = this.createOnErrorAlarm(
       graphLambda.logGroup,
@@ -78,36 +85,31 @@ export class IotSystemCdkStack extends Stack {
 
   /**
    * Create a rule which sends picotherm data from IoT to Timestream
-   * @param measurementsTable a Timestream CfnTable to insert measurements into
+   * @param measurementsTable a DynamoDB table to insert measurements into
    * @returns a CfnTopicRule that sends data to timestream
    */
-  private createIotTimestreamRule(measurementsTable: CfnTable): CfnTopicRule {
-    const role = new Role(this, "IotTimestreamAccessRole", {
+  private createIotDDBRule(measurementsTable: TableV2): CfnTopicRule {
+    const role = new Role(this, "IotDDBAccessRole", {
       assumedBy: new ServicePrincipal("iot.amazonaws.com")
-    })
+    });
 
-    role.addToPolicy(new PolicyStatement({
-      actions: ['timestream:WriteRecords'],
-      resources: [measurementsTable.attrArn]
-    }))
-    
-    role.addToPolicy(new PolicyStatement({
-      actions: ['timestream:DescribeEndpoints'],
-      resources: ['*']
-    }))
+    measurementsTable.grantWriteData(role);
 
-    return new CfnTopicRule(this, 'PicothermTimestreamRule', {
+    return new CfnTopicRule(this, 'PicothermDDBRule', {
+      ruleName: 'PicothermDDBRule',
       topicRulePayload: {
         actions: [{
-          timestream: {
-            databaseName: measurementsTable.databaseName,
-            dimensions: [{
-              name: 'device',
-              value: '${topic()}',
-            }],
+          dynamoDb: {
+            tableName: measurementsTable.tableName,
             roleArn: role.roleArn,
-            tableName: measurementsTable.attrName
-          },
+            hashKeyField: 'device_id',
+            hashKeyValue: '${topic()}',
+            hashKeyType: 'STRING',
+            rangeKeyField: 'time',
+            rangeKeyValue: '${timestamp()}',
+            rangeKeyType: 'NUMBER',
+            payloadField: 'payload'
+          }
         }],
         sql: 'SELECT temperature, humidity FROM "picotherm/#"',
       }
