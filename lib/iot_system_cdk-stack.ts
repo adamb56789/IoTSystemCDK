@@ -2,7 +2,7 @@ import { CfnOutput, Stack, StackProps } from 'aws-cdk-lib';
 import { Alarm, ComparisonOperator, TreatMissingData } from 'aws-cdk-lib/aws-cloudwatch';
 import { SnsAction } from 'aws-cdk-lib/aws-cloudwatch-actions';
 import { AttributeType, BillingMode, Table, TableV2 } from 'aws-cdk-lib/aws-dynamodb';
-import { PolicyStatement, Role, ServicePrincipal } from 'aws-cdk-lib/aws-iam';
+import { ServicePrincipal } from 'aws-cdk-lib/aws-iam';
 import { CfnTopicRule } from 'aws-cdk-lib/aws-iot';
 import { Function, FunctionUrlAuthType, Runtime } from 'aws-cdk-lib/aws-lambda';
 import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
@@ -22,10 +22,13 @@ export class IotSystemCdkStack extends Stack {
       tableName: 'MeasurementsTable',
       partitionKey: { name: 'device_id', type: AttributeType.STRING },
       sortKey: { name: 'time', type: AttributeType.NUMBER },
+      pointInTimeRecovery: true,
       deletionProtection: true
     });
 
-    this.createIotDDBRule(measurementsTable);
+    const storeMeasurementLambda = this.storeMeasurementLambda(measurementsTable);
+
+    this.createIotLambdaRule(storeMeasurementLambda);
 
     const adminNotificationTopic = new Topic(this, 'IoTSystemErrors')
 
@@ -58,37 +61,25 @@ export class IotSystemCdkStack extends Stack {
     });
   }
 
-  /**
-   * Create a rule which sends picotherm data from IoT to Timestream
-   * @param measurementsTable a DynamoDB table to insert measurements into
-   * @returns a CfnTopicRule that sends data to timestream
-   */
-  private createIotDDBRule(measurementsTable: TableV2): CfnTopicRule {
-    const role = new Role(this, "IotDDBAccessRole", {
-      assumedBy: new ServicePrincipal("iot.amazonaws.com")
-    });
-
-    measurementsTable.grantWriteData(role);
-
-    return new CfnTopicRule(this, 'PicothermDDBRule', {
-      ruleName: 'PicothermDDBRule',
+  private createIotLambdaRule(lambdaFunction: Function): CfnTopicRule {
+    const rule = new CfnTopicRule(this, 'PicothermLambdaRule', {
+      ruleName: 'PicothermLambdaRule',
       topicRulePayload: {
+        sql: 'SELECT topic() as device_id, timestamp() as time, temperature, humidity FROM "picotherm/#"',
         actions: [{
-          dynamoDb: {
-            tableName: measurementsTable.tableName,
-            roleArn: role.roleArn,
-            hashKeyField: 'device_id',
-            hashKeyValue: '${topic()}',
-            hashKeyType: 'STRING',
-            rangeKeyField: 'time',
-            rangeKeyValue: '${timestamp()}',
-            rangeKeyType: 'NUMBER',
-            payloadField: 'payload'
+          lambda: {
+            functionArn: lambdaFunction.functionArn
           }
-        }],
-        sql: 'SELECT temperature, humidity FROM "picotherm/#"',
+        }]
       }
     });
+
+    lambdaFunction.addPermission('IotPermission', {
+      principal: new ServicePrincipal('iot.amazonaws.com'),
+      sourceArn: rule.attrArn
+    });
+
+    return rule
   }
 
   /**
@@ -118,5 +109,21 @@ export class IotSystemCdkStack extends Stack {
     });
 
     return lambdaFunction
+  }
+
+  private storeMeasurementLambda(measurementsTable: TableV2): Function {
+    const lambdaFunction = new NodejsFunction(this, 'StoreMeasurement', {
+      functionName: 'StoreMeasurement',
+      entry: join(__dirname, 'lambdas', 'StoreMeasurement', 'index.js'),
+      environment: {
+        MEASUREMENTS_TABLE_NAME: measurementsTable.tableName,
+      },
+      runtime: Runtime.NODEJS_20_X,
+      memorySize: 128
+    });
+
+    measurementsTable.grantWriteData(lambdaFunction);
+
+    return lambdaFunction;
   }
 }
