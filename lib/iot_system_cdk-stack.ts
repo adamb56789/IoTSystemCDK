@@ -1,11 +1,15 @@
-import { CfnOutput, Stack, StackProps } from 'aws-cdk-lib';
+import { PythonFunction } from '@aws-cdk/aws-lambda-python-alpha';
+import { CfnOutput, RemovalPolicy, Stack, StackProps } from 'aws-cdk-lib';
 import { Alarm, ComparisonOperator, TreatMissingData } from 'aws-cdk-lib/aws-cloudwatch';
 import { SnsAction } from 'aws-cdk-lib/aws-cloudwatch-actions';
 import { AttributeType, BillingMode, Table, TableV2 } from 'aws-cdk-lib/aws-dynamodb';
+import { Rule, Schedule } from 'aws-cdk-lib/aws-events';
+import { LambdaFunction } from 'aws-cdk-lib/aws-events-targets';
 import { ServicePrincipal } from 'aws-cdk-lib/aws-iam';
 import { CfnTopicRule } from 'aws-cdk-lib/aws-iot';
-import { Function, FunctionUrlAuthType, Runtime } from 'aws-cdk-lib/aws-lambda';
+import { Architecture, Function, FunctionUrlAuthType, LayerVersion, Runtime } from 'aws-cdk-lib/aws-lambda';
 import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
+import { Bucket } from 'aws-cdk-lib/aws-s3';
 import { Topic } from 'aws-cdk-lib/aws-sns';
 import { StringParameter } from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
@@ -23,7 +27,8 @@ export class IotSystemCdkStack extends Stack {
       partitionKey: { name: 'device_id', type: AttributeType.STRING },
       sortKey: { name: 'time', type: AttributeType.NUMBER },
       pointInTimeRecovery: true,
-      deletionProtection: true
+      deletionProtection: true,
+      removalPolicy: RemovalPolicy.RETAIN
     });
 
     const storeMeasurementLambda = this.storeMeasurementLambda(measurementsTable);
@@ -37,13 +42,22 @@ export class IotSystemCdkStack extends Stack {
         name: 'device_id',
         type: AttributeType.STRING
       },
-      billingMode: BillingMode.PAY_PER_REQUEST
+      billingMode: BillingMode.PAY_PER_REQUEST,
+      removalPolicy: RemovalPolicy.RETAIN
     });
 
     const getLatestMeasurementsLambda = this.createLatestMeasurementsLambda(measurementsTable, locationTable);
 
+    const measurementsBucket = new Bucket(this, 'DataDumpBucket', {
+      bucketName: "picotherm-measurement-data",
+      removalPolicy: RemovalPolicy.RETAIN
+    })
+
+    const dailyS3Lambda = this.dailyS3Dump(measurementsTable, locationTable, measurementsBucket);
+
     const lambdas = [
-      getLatestMeasurementsLambda
+      getLatestMeasurementsLambda,
+      dailyS3Lambda
     ];
 
     lambdas.forEach(l => {
@@ -94,7 +108,8 @@ export class IotSystemCdkStack extends Stack {
         PASSWORD_HASH: StringParameter.valueFromLookup(this, CORRECT_PASSWORD_HASH_PARAMETER)
       },
       runtime: Runtime.NODEJS_20_X,
-      memorySize: 1000
+      memorySize: 1000,
+      reservedConcurrentExecutions: 2 // Prevents denial-of-wallet attack
     });
 
     measurementsTable.grantReadData(lambdaFunction)
@@ -125,5 +140,36 @@ export class IotSystemCdkStack extends Stack {
     measurementsTable.grantWriteData(lambdaFunction);
 
     return lambdaFunction;
+  }
+
+  private dailyS3Dump(measurementsTable: TableV2, locationTable: Table, measurementsBucket: Bucket): Function {
+    const awsPandasLayer = LayerVersion.fromLayerVersionArn(this, "PandasLayer", "arn:aws:lambda:eu-west-1:336392948345:layer:AWSSDKPandas-Python312-Arm64:12");
+
+    const lambda = new PythonFunction(this, 'dailyS3Dump', {
+      functionName: "DailyS3Dump",
+      entry: join(__dirname, 'lambdas', 'DailyS3Dump'),
+      runtime: Runtime.PYTHON_3_12,
+      architecture: Architecture.ARM_64,
+      layers: [awsPandasLayer],
+      environment: {
+        MEASUREMENTS_TABLE_NAME: measurementsTable.tableName,
+        LOCATION_TABLE_NAME: locationTable.tableName,
+        BUCKET_NAME: measurementsBucket.bucketName
+      },
+      memorySize: 1000
+    });
+
+    measurementsTable.grantReadData(lambda);
+    locationTable.grantReadData(lambda);
+    measurementsBucket.grantPut(lambda);
+
+    const rule = new Rule(this, 'DailyS3DumpRule', {
+      ruleName: "DailyS3Dump",
+      schedule: Schedule.cron({ minute: '0', hour: '3', day: '*', month: '*', year: '*' }),
+    });
+
+    rule.addTarget(new LambdaFunction(lambda));
+
+    return lambda;
   }
 }
