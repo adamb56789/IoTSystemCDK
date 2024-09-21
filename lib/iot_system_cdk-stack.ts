@@ -1,9 +1,9 @@
 import { PythonFunction } from '@aws-cdk/aws-lambda-python-alpha';
-import { CfnOutput, RemovalPolicy, Stack, StackProps } from 'aws-cdk-lib';
+import { CfnOutput, Duration, RemovalPolicy, Stack, StackProps } from 'aws-cdk-lib';
 import { Alarm, ComparisonOperator, TreatMissingData } from 'aws-cdk-lib/aws-cloudwatch';
 import { SnsAction } from 'aws-cdk-lib/aws-cloudwatch-actions';
 import { AttributeType, BillingMode, Table, TableV2 } from 'aws-cdk-lib/aws-dynamodb';
-import { Rule, Schedule } from 'aws-cdk-lib/aws-events';
+import { Rule, RuleTargetInput, Schedule } from 'aws-cdk-lib/aws-events';
 import { LambdaFunction } from 'aws-cdk-lib/aws-events-targets';
 import { ServicePrincipal } from 'aws-cdk-lib/aws-iam';
 import { CfnTopicRule } from 'aws-cdk-lib/aws-iot';
@@ -53,7 +53,7 @@ export class IotSystemCdkStack extends Stack {
       removalPolicy: RemovalPolicy.RETAIN
     })
 
-    const dailyS3Lambda = this.dailyS3Dump(measurementsTable, locationTable, measurementsBucket);
+    const dailyS3Lambda = this.aggregateMeasurementsS3(measurementsTable, locationTable, measurementsBucket);
 
     const lambdas = [
       getLatestMeasurementsLambda,
@@ -142,12 +142,12 @@ export class IotSystemCdkStack extends Stack {
     return lambdaFunction;
   }
 
-  private dailyS3Dump(measurementsTable: TableV2, locationTable: Table, measurementsBucket: Bucket): Function {
+  private aggregateMeasurementsS3(measurementsTable: TableV2, locationTable: Table, measurementsBucket: Bucket): Function {
     const awsPandasLayer = LayerVersion.fromLayerVersionArn(this, "PandasLayer", "arn:aws:lambda:eu-west-1:336392948345:layer:AWSSDKPandas-Python312-Arm64:12");
 
-    const lambda = new PythonFunction(this, 'dailyS3Dump', {
-      functionName: "DailyS3Dump",
-      entry: join(__dirname, 'lambdas', 'DailyS3Dump'),
+    const lambda = new PythonFunction(this, 'aggregateMeasurementData', {
+      functionName: "AggregateMeasurementData",
+      entry: join(__dirname, 'lambdas', 'AggregateMeasurementData'),
       runtime: Runtime.PYTHON_3_12,
       architecture: Architecture.ARM_64,
       layers: [awsPandasLayer],
@@ -156,19 +156,46 @@ export class IotSystemCdkStack extends Stack {
         LOCATION_TABLE_NAME: locationTable.tableName,
         BUCKET_NAME: measurementsBucket.bucketName
       },
-      memorySize: 1000
+      memorySize: 1000,
+      timeout: Duration.minutes(15)
     });
 
     measurementsTable.grantReadData(lambda);
     locationTable.grantReadData(lambda);
-    measurementsBucket.grantPut(lambda);
+    measurementsBucket.grantReadWrite(lambda);
 
-    const rule = new Rule(this, 'DailyS3DumpRule', {
+    const dailyRule = new Rule(this, 'DailyS3DumpRule', {
       ruleName: "DailyS3Dump",
       schedule: Schedule.cron({ minute: '0', hour: '3', day: '*', month: '*', year: '*' }),
     });
 
-    rule.addTarget(new LambdaFunction(lambda));
+    dailyRule.addTarget(new LambdaFunction(lambda, {
+      event: RuleTargetInput.fromObject({
+        frequency: "daily"
+      })
+    }));
+
+    const monthlyRule = new Rule(this, 'MonthlyS3DumpRule', {
+      ruleName: "MonthlyS3Dump",
+      schedule: Schedule.cron({ minute: '0', hour: '3', day: '1', month: '*', year: '*' }),
+    });
+
+    monthlyRule.addTarget(new LambdaFunction(lambda, {
+      event: RuleTargetInput.fromObject({
+        frequency: "monthly"
+      })
+    }));
+
+    const yearlyRule = new Rule(this, 'YearlyS3DumpRule', {
+      ruleName: "YearlyS3Dump",
+      schedule: Schedule.cron({ minute: '0', hour: '3', day: '1', month: '1', year: '*' }),
+    });
+
+    yearlyRule.addTarget(new LambdaFunction(lambda, {
+      event: RuleTargetInput.fromObject({
+        frequency: "yearly"
+      })
+    }));
 
     return lambda;
   }

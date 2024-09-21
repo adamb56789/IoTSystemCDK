@@ -11,14 +11,15 @@ end_date = datetime.strptime('2024-08-22', '%Y-%m-%d')
 while start_date <= end_date:
     event = {
         'date': start_date.strftime('%Y-%m-%d'),
+        'frequency': "monthly"
     }
 
     response = lambda_client.invoke(
-        FunctionName='DailyS3Dump',
+        FunctionName='AggregateMeasurementData',
         InvocationType='Event',
         Payload=json.dumps(event)
     )
 
-    start_date += timedelta(days=1)
+    start_date += timedelta(days=31)
 
 print("Backfilling triggered for all dates.")
