@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 import hashlib
 import io
 import os
@@ -6,7 +7,9 @@ import boto3
 import dateparser
 from matplotlib import pyplot as plt
 
-LOCATION_TO_ID_INDEX = "LocationToId"
+from dao.LocationTable import LocationTable
+from dao.MeasurementsTable import MeasurementsTable
+from dao.MeasurementsBucket import MeasurementsBucket
 
 # CORRECT_PASSWORD_HASH = os.environ['PASSWORD_HASH']
 # MEASUREMENTS_TABLE_NAME = os.environ['MEASUREMENTS_TABLE_NAME']
@@ -41,20 +44,6 @@ def get_error_page(error_message):
 
 dynamodb = boto3.resource("dynamodb")
 
-def get_device_id_by_location(location):
-    table = dynamodb.Table(LOCATION_TABLE_NAME)
-    
-    response = table.query(
-        IndexName=LOCATION_TO_ID_INDEX,
-        KeyConditionExpression=boto3.dynamodb.conditions.Key("location").eq(location)
-    )
-    
-    items = response.get("Items", [])
-    if not items:
-        return None
-    
-    return items[0].get("device_id")
-
 
 def handler(event, context):
     print("Received event:", event)
@@ -87,7 +76,10 @@ def handler(event, context):
     if from_time >= until_time:
         return get_error_page("'from' date must be earlier than 'until' date.")
     
-    device_id = get_device_id_by_location(location)
+    locationTable = LocationTable(LOCATION_TABLE_NAME)
+    device_id = locationTable.get_device_id_by_location(location)
+
+    
     if not device_id:
         return get_error_page(f"Device matching location not found.")
     print("Found devide ID", device_id)
@@ -127,3 +119,6 @@ html = handler({
 f = open("test_output.html", "w")
 f.write(html)
 f.close()
+
+bucket = MeasurementsBucket(BUCKET_NAME)
+yesterday = bucket.download_day("picotherm/1", datetime.utcnow() - timedelta(days=1))

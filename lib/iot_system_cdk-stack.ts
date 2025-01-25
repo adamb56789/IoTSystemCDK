@@ -155,7 +155,8 @@ export class IotSystemCdkStack extends Stack {
 
     const lambda = new PythonFunction(this, 'aggregateMeasurementData', {
       functionName: "AggregateMeasurementData",
-      entry: join(__dirname, 'lambdas', 'AggregateMeasurementData'),
+      entry: join(__dirname, 'lambdas'),
+      index: "AggregateMeasurementData.py",
       runtime: Runtime.PYTHON_3_13,
       architecture: Architecture.ARM_64,
       layers: [awsPandasLayer],

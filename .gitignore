@@ -10,5 +10,6 @@ cdk.out
 cdk.context.json
 
 venv
+/**/__pycache__
 
 test_output.html
