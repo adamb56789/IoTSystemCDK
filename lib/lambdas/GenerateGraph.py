@@ -11,10 +11,10 @@ from dao.LocationTable import LocationTable
 from dao.MeasurementsTable import MeasurementsTable
 from dao.MeasurementsBucket import MeasurementsBucket
 
-# CORRECT_PASSWORD_HASH = os.environ['PASSWORD_HASH']
-# MEASUREMENTS_TABLE_NAME = os.environ['MEASUREMENTS_TABLE_NAME']
-# LOCATION_TABLE_NAME = os.environ['LOCATION_TABLE_NAME']
-# BUCKET_NAME = os.environ['BUCKET_NAME']
+CORRECT_PASSWORD_HASH = os.environ['PASSWORD_HASH']
+MEASUREMENTS_TABLE_NAME = os.environ['MEASUREMENTS_TABLE_NAME']
+LOCATION_TABLE_NAME = os.environ['LOCATION_TABLE_NAME']
+BUCKET_NAME = os.environ['BUCKET_NAME']
 
 def get_output_page(svg):
     return f"""
@@ -104,21 +104,21 @@ def handler(event, context):
         }
     }
 
-CORRECT_PASSWORD_HASH = hashlib.sha256("password".encode('utf-8')).hexdigest()
-MEASUREMENTS_TABLE_NAME = "MeasurementsTable"
-LOCATION_TABLE_NAME = "IotSystemCdkStack-DeviceLocations112CC256-1S5L1KJQCC1W3"
-BUCKET_NAME = "picotherm-measurement-data"
+# CORRECT_PASSWORD_HASH = hashlib.sha256("password".encode('utf-8')).hexdigest()
+# MEASUREMENTS_TABLE_NAME = "MeasurementsTable"
+# LOCATION_TABLE_NAME = "IotSystemCdkStack-DeviceLocations112CC256-1S5L1KJQCC1W3"
+# BUCKET_NAME = "picotherm-measurement-data"
 
-html = handler({
-    "password": "password",
-    "location": "Bedroom",
-    "from": "yesterday",
-    "until": "now"
-}, None)["body"]
+# html = handler({
+#     "password": "password",
+#     "location": "Bedroom",
+#     "from": "yesterday",
+#     "until": "now"
+# }, None)["body"]
 
-f = open("test_output.html", "w")
-f.write(html)
-f.close()
+# f = open("test_output.html", "w")
+# f.write(html)
+# f.close()
 
-bucket = MeasurementsBucket(BUCKET_NAME)
-yesterday = bucket.download_day("picotherm/1", datetime.utcnow() - timedelta(days=1))
+# bucket = MeasurementsBucket(BUCKET_NAME)
+# yesterday = bucket.download_day("picotherm/1", datetime.utcnow() - timedelta(days=1))

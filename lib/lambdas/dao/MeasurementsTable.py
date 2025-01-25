@@ -12,11 +12,14 @@ dynamodb = boto3.resource("dynamodb")
 class MeasurementsTable:
 
     def __init__(self, table_name: str):
-        self.table = dynamodb.Table(table_name)
+        self.table = dynamodb.Table(table_name) # type: ignore
 
     def get_sensor_data(self, device: str, start_time: datetime, end_time: datetime):
+        start = int(start_time.timestamp() * 1000)
+        end = int(end_time.timestamp() * 1000)
+        
         response = self.table.query(
-            KeyConditionExpression=Key("device_id").eq(device) & Key("time").between(Decimal(start_time), Decimal(end_time))
+            KeyConditionExpression=Key("device_id").eq(device) & Key("time").between(Decimal(start), Decimal(end))
         )
 
         items = response.get("Items", []) 

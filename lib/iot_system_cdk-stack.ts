@@ -151,15 +151,11 @@ export class IotSystemCdkStack extends Stack {
   }
 
   private aggregateMeasurementsS3(measurementsTable: TableV2, locationTable: Table, measurementsBucket: Bucket): Function {
-    const awsPandasLayer = LayerVersion.fromLayerVersionArn(this, "PandasLayer", "arn:aws:lambda:eu-west-1:336392948345:layer:AWSSDKPandas-Python312-Arm64:12");
-
     const lambda = new PythonFunction(this, 'aggregateMeasurementData', {
       functionName: "AggregateMeasurementData",
       entry: join(__dirname, 'lambdas'),
       index: "AggregateMeasurementData.py",
       runtime: Runtime.PYTHON_3_13,
-      architecture: Architecture.ARM_64,
-      layers: [awsPandasLayer],
       environment: {
         MEASUREMENTS_TABLE_NAME: measurementsTable.tableName,
         LOCATION_TABLE_NAME: locationTable.tableName,
