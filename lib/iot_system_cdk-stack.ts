@@ -14,8 +14,9 @@ import { Topic } from 'aws-cdk-lib/aws-sns';
 import { StringParameter } from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
 import { join } from 'path';
+import { GenerateGraphLambda } from './constructs/generate-graph-lambda';
 
-const CORRECT_PASSWORD_HASH_PARAMETER = '/PicoTherm/CorrectPasswordHash';
+export const CORRECT_PASSWORD_HASH_PARAMETER = '/PicoTherm/CorrectPasswordHash';
 
 export class IotSystemCdkStack extends Stack {
 
@@ -43,7 +44,12 @@ export class IotSystemCdkStack extends Stack {
         type: AttributeType.STRING
       },
       billingMode: BillingMode.PAY_PER_REQUEST,
-      removalPolicy: RemovalPolicy.RETAIN
+      removalPolicy: RemovalPolicy.RETAIN,
+    });
+    
+    locationTable.addGlobalSecondaryIndex({
+      indexName: 'LocationToId',
+      partitionKey: { name: 'location', type: AttributeType.STRING },
     });
 
     const getLatestMeasurementsLambda = this.createLatestMeasurementsLambda(measurementsTable, locationTable);
@@ -54,6 +60,8 @@ export class IotSystemCdkStack extends Stack {
     })
 
     const dailyS3Lambda = this.aggregateMeasurementsS3(measurementsTable, locationTable, measurementsBucket);
+
+    const generateGraphLambda = new GenerateGraphLambda(this, "GenerateGraphLambda", {measurementsTable, locationTable, measurementsBucket});
 
     const lambdas = [
       getLatestMeasurementsLambda,
@@ -148,7 +156,7 @@ export class IotSystemCdkStack extends Stack {
     const lambda = new PythonFunction(this, 'aggregateMeasurementData', {
       functionName: "AggregateMeasurementData",
       entry: join(__dirname, 'lambdas', 'AggregateMeasurementData'),
-      runtime: Runtime.PYTHON_3_12,
+      runtime: Runtime.PYTHON_3_13,
       architecture: Architecture.ARM_64,
       layers: [awsPandasLayer],
       environment: {
