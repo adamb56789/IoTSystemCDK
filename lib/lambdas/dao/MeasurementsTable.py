@@ -14,7 +14,7 @@ class MeasurementsTable:
     def __init__(self, table_name: str):
         self.table = dynamodb.Table(table_name) # type: ignore
 
-    def get_sensor_data(self, device: str, start_time: datetime, end_time: datetime):
+    def get_sensor_data(self, device: str, start_time: datetime, end_time: datetime) -> np.ndarray:
         start = int(start_time.timestamp() * 1000)
         end = int(end_time.timestamp() * 1000)
         

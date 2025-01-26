@@ -81,27 +81,11 @@ def process_monthly(devices: list[str], input_date: datetime | None):
         end = date(input_date.year, input_date.month, calendar.monthrange(start.year, start.month)[1])
 
     for device in devices:
-        daily_arrays = []
+        month_array = measurements_bucket.download_days_in_range(device, start.year, start.month, start.day, end.day)
 
-        day = start
-        while day <= end:
-            daily_array = measurements_bucket.download_day(device, day)
-            if daily_array is None:
-                # If we stop finding days there are no more
-                break
-
-            if daily_array.shape[0] != 0 and daily_array.shape[1] == 3:
-                daily_arrays.append(daily_array)
-            else:
-                print(f"Shape of day {day} is incorrect, is {daily_array.shape}")
-
-            day += timedelta(days=1)
-
-        if daily_arrays:
-            monthly_array = np.concatenate(daily_arrays, axis=0)
-            measurements_bucket.upload_month(device, start, monthly_array)
-
-            append_month_to_year(device, start, monthly_array)
+        if month_array is not None:
+            measurements_bucket.upload_month(device, start, month_array)
+            append_month_to_year(device, start, month_array)
         else:
             print(f'No data found for device {device} for month {start}')
 
@@ -129,24 +113,9 @@ def process_yearly(devices: list[str], input_date: datetime | None):
         year = input_date.year
 
     for device in devices:
-        monthly_arrays = []
+        yearly_array = measurements_bucket.download_months_in_range(device, year, 1, 12)
 
-        for month in range(1, 13):
-            month_datetime = date(year, month, 1)
-            
-            monthly_array = measurements_bucket.download_month(device, month_datetime)
-
-            if monthly_array is None:
-                # If we stop finding months there are no more
-                break
-
-            if monthly_array.shape[0] != 0 and monthly_array.shape[1] == 3:
-                monthly_arrays.append(monthly_array)
-            else:
-                print(f"Shape of month {month_datetime} is incorrect, is {monthly_array.shape}")
-
-        if monthly_arrays:
-            yearly_array = np.concatenate(monthly_arrays, axis=0)
+        if yearly_array is not None:
             measurements_bucket.upload_year(device, date(year, 1, 1), yearly_array)
         else:
             print(f'No data found for device {device} for year {year}')

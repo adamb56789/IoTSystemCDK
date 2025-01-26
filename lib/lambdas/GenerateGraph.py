@@ -10,11 +10,10 @@ from matplotlib import pyplot as plt
 from dao.LocationTable import LocationTable
 from dao.MeasurementsTable import MeasurementsTable
 from dao.MeasurementsBucket import MeasurementsBucket
+from dao.MeasurementHelper import MeasurementHelper
 
 CORRECT_PASSWORD_HASH = os.environ['PASSWORD_HASH']
-MEASUREMENTS_TABLE_NAME = os.environ['MEASUREMENTS_TABLE_NAME']
 LOCATION_TABLE_NAME = os.environ['LOCATION_TABLE_NAME']
-BUCKET_NAME = os.environ['BUCKET_NAME']
 
 def get_output_page(svg):
     return f"""
@@ -43,6 +42,8 @@ def get_error_page(error_message):
     }
 
 dynamodb = boto3.resource("dynamodb")
+location_table = LocationTable(LOCATION_TABLE_NAME)
+measurements_helper = MeasurementHelper(MeasurementsTable(os.environ['MEASUREMENTS_TABLE_NAME']), MeasurementsBucket(os.environ['BUCKET_NAME']))
 
 
 def handler(event, context):
@@ -76,13 +77,18 @@ def handler(event, context):
     if from_time >= until_time:
         return get_error_page("'from' date must be earlier than 'until' date.")
     
-    locationTable = LocationTable(LOCATION_TABLE_NAME)
-    device_id = locationTable.get_device_id_by_location(location)
+    device_id = location_table.get_device_id_by_location(location)
 
-    
     if not device_id:
         return get_error_page(f"Device matching location not found.")
     print("Found devide ID", device_id)
+
+    data = measurements_helper.get_data_in_range(device_id, from_time, until_time)
+
+    print(f"Downloaded data shaps is {data.shape}")
+    if data.size == 0:
+        return get_error_page("No data was found for the given time.")
+    plt.plot(data[:, 0].astype('datetime64[ms]'), data[:, 1])
 
     plt.title(location)
     plt.tight_layout()
@@ -103,22 +109,3 @@ def handler(event, context):
             'Content-Type': 'text/html;charset=utf-8',
         }
     }
-
-# CORRECT_PASSWORD_HASH = hashlib.sha256("password".encode('utf-8')).hexdigest()
-# MEASUREMENTS_TABLE_NAME = "MeasurementsTable"
-# LOCATION_TABLE_NAME = "IotSystemCdkStack-DeviceLocations112CC256-1S5L1KJQCC1W3"
-# BUCKET_NAME = "picotherm-measurement-data"
-
-# html = handler({
-#     "password": "password",
-#     "location": "Bedroom",
-#     "from": "yesterday",
-#     "until": "now"
-# }, None)["body"]
-
-# f = open("test_output.html", "w")
-# f.write(html)
-# f.close()
-
-# bucket = MeasurementsBucket(BUCKET_NAME)
-# yesterday = bucket.download_day("picotherm/1", datetime.utcnow() - timedelta(days=1))

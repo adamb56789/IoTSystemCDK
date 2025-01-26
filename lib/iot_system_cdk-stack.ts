@@ -171,7 +171,7 @@ export class IotSystemCdkStack extends Stack {
 
     const dailyRule = new Rule(this, 'DailyS3DumpRule', {
       ruleName: "DailyS3Dump",
-      schedule: Schedule.cron({ minute: '0', hour: '3', day: '*', month: '*', year: '*' }),
+      schedule: Schedule.cron({ minute: '1', hour: '0', day: '*', month: '*', year: '*' }),
     });
 
     dailyRule.addTarget(new LambdaFunction(lambda, {
@@ -182,7 +182,7 @@ export class IotSystemCdkStack extends Stack {
 
     const monthlyRule = new Rule(this, 'MonthlyS3DumpRule', {
       ruleName: "MonthlyS3Dump",
-      schedule: Schedule.cron({ minute: '0', hour: '3', day: '1', month: '*', year: '*' }),
+      schedule: Schedule.cron({ minute: '1', hour: '0', day: '1', month: '*', year: '*' }),
     });
 
     monthlyRule.addTarget(new LambdaFunction(lambda, {
@@ -193,7 +193,7 @@ export class IotSystemCdkStack extends Stack {
 
     const yearlyRule = new Rule(this, 'YearlyS3DumpRule', {
       ruleName: "YearlyS3Dump",
-      schedule: Schedule.cron({ minute: '0', hour: '3', day: '1', month: '1', year: '*' }),
+      schedule: Schedule.cron({ minute: '1', hour: '0', day: '1', month: '1', year: '*' }),
     });
 
     yearlyRule.addTarget(new LambdaFunction(lambda, {
