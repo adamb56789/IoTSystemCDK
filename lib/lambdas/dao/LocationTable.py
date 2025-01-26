@@ -1,5 +1,6 @@
 
 import boto3
+from boto3.dynamodb.conditions import Key
 
 dynamodb = boto3.resource("dynamodb")
 
@@ -8,7 +9,7 @@ class LocationTable:
 
 
     def __init__(self, table_name: str):
-        self.table = dynamodb.Table(table_name)
+        self.table = dynamodb.Table(table_name) # type: ignore
 
     def get_all_device_ids(self) -> list[str]:
         response = self.table.scan()
@@ -19,7 +20,7 @@ class LocationTable:
         
         response = self.table.query(
             IndexName="LocationToId",
-            KeyConditionExpression=boto3.dynamodb.conditions.Key("location").eq(location)
+            KeyConditionExpression=Key("location").eq(location.lower())
         )
         
         items = response.get("Items", [])

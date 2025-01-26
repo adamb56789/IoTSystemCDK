@@ -21,7 +21,7 @@ def get_output_page(svg):
 <html>
 <head>
   <title>Home Measurement History</title>
-  <!-- icon data to avoid browser making another request -->
+  <!-- empty icon data to avoid browser making another request -->
   <link rel="icon" href="data:,">
 </head>
 
@@ -88,6 +88,10 @@ def handler(event, context):
     print(f"Downloaded data shaps is {data.shape}")
     if data.size == 0:
         return get_error_page("No data was found for the given time.")
+
+    fig, axis_temperature = plt.subplots(figsize=(16, 10))
+    ax_humidity = axis_temperature.twinx()
+
     plt.plot(data[:, 0].astype('datetime64[ms]'), data[:, 1])
 
     plt.title(location)
@@ -100,7 +104,7 @@ def handler(event, context):
     raw_svg = f.getvalue()
 
     svg = raw_svg.decode("utf-8")
-    svg = svg[svg.find('<svg'):]  # Remove stuff from front before the svg
+    svg = svg[svg.find('<svg'):]  # Remove stuff from before the svg
     html = get_output_page(svg)
     return {
         "statusCode": 200,
@@ -109,3 +113,5 @@ def handler(event, context):
             'Content-Type': 'text/html;charset=utf-8',
         }
     }
+
+handler({"password": "password", "location": "Bedroom", "from": "24 hours ago", "until": "now"}, None)
