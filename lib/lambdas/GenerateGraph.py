@@ -194,4 +194,3 @@ def handler(event, context):
             'Content-Type': 'text/html;charset=utf-8',
         }
     }
-
