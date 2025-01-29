@@ -65,7 +65,8 @@ export class IotSystemCdkStack extends Stack {
 
     const lambdas = [
       getLatestMeasurementsLambda,
-      dailyS3Lambda
+      dailyS3Lambda,
+      generateGraphLambda,
     ];
 
     lambdas.forEach(l => {
