@@ -104,7 +104,7 @@ def handler(event, context):
 
     data = measurements_helper.get_data_in_range(device_id, from_time, until_time)
 
-    print(f"Downloaded data shaps is {data.shape}")
+    print(f"Downloaded data shape is {data.shape}")
     if data.size == 0:
         return get_error_page("No data was found for the given time.")
     
