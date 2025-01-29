@@ -112,6 +112,13 @@ def handler(event, context):
         return get_error_page("No data was found for the given time.")
     
     number_of_points = int((until_time - from_time).total_seconds() // period_seconds)
+
+    if number_of_points <= 1:
+        # Matplotlib locator acts strangely and crashes if there is only 1 data point.
+        # If you just want an average there can be another way to get statistics.
+        # Makes more sense than trying to fix this weird bug I don't care about.
+        return get_error_page("Not enough data points: time window too short or period too long.")
+
     moving_average_radius = int(number_of_points // 100)
     print(f"Drawing {number_of_points} points with temperature moving average of {moving_average_radius}.")
 
