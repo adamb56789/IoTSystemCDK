@@ -95,6 +95,9 @@ def handler(event, context):
         period_seconds = -(parsed_period - reference).total_seconds()
     else:
         return get_error_page("Unable to interpret period.")
+
+    if period_seconds < 5 * 60:
+        return get_error_page("Minimum period is 5 minutes.")
     
     device_id = location_table.get_device_id_by_location(location)
 
